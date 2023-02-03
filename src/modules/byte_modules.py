@@ -1,52 +1,56 @@
 #!/usr/bin/env python3
+"""
+This File contains the Bytes function and associated
+functions required to manipulate bytes
+"""
+from __future__ import annotations
 
-"""
-This file contains the Bytes class which serves
-as a wrapper for byte manipulation functions
-"""
-import os
-import sys
+
 import time
 import random
-
-# print if environment is dev
-_print = lambda msg: print(msg) if (os.getenv("ENV") == "dev") or (os.getenv("ENV") == "development") else None
-_eprint = lambda msg: print(msg, file=sys.stderr) if (os.getenv("ENV") == "dev") or (os.getenv("ENV") == "development") else None
+import hashlib
+from Crypto.Cipher import AES
 
 class Bytes:
-    """Byte manipulation object"""
+    """Class containing Byte related functions"""
 
-    def __init__(self):
+    def __init__(self, payload):
+        """Initialize the variables"""
         self.str_payload = None
-        self.byte_payload = None
+        self.enc_block = {}
         self.payload = None
-        self.pad_bytes = None
-        self.unpad_bytes = None
 
-    def new(self, payload):
-        """Store payload accordingly"""
-        _print(f"[i] Raw Payload:\t{payload}")
-        _print(f"[i] Payload Type:\t{type(payload)}")
+        """Create a new instance of the class"""
 
         if isinstance(payload, str):
             self.str_payload = payload
-            self.payload = self.byte_payload = payload.encode('utf-8')
+            self.payload = payload.encode("utf-8")
 
         elif isinstance(payload, bytes):
-            self.payload = self.byte_payload = payload
+            self.payload = payload
 
         else:
-            raise Exception("Invalid Data Type: must be bytes or str")
-
-        _print(f"[i] String Payload:\t{self.str_payload}")
-        _print(f"[i] Byte Payload:\t{self.byte_payload}")
+            raise Exception("Incompatible type: must be str or bytes")
 
 
-    def get_random_bytes(self, size: int = 32)->bytes:
-        """This function returns a random bytes of specified length(default: 32)"""
+    @staticmethod
+    def pad(payload:bytes, align: int = 16)->bytes:
+        """Pad bytes to given alignment"""
+
+        pad_len = align - (len(payload) % align)
+        padded_payload = [align, payload + pad_len*b' ']
+        return padded_payload
+
+
+    def unpad(self)->bytes:
+        """Remove padding from bytes"""
+        return self.payload.rstrip()
+
+    @staticmethod
+    def get_random_bytes(size: int = 32)->bytes:
+        """Returns a random bytes of specified length(default: 32)"""
 
         output = None
-        _print(f"[i] Fetching {size} random bytes")
 
         # Seed with current time
         random.seed(time.time())
@@ -55,17 +59,48 @@ class Bytes:
         output = bytes(random.getrandbits(8) for _ in range(size))
 
         if output[-1] == b' ':
-            output = self.get_random_bytes(size)
+            output = Bytes.get_random_bytes(size)
 
         return output
 
-    def pad(self, align: int)->bytes:
-        """Pad bytes to given alignment"""
-        pad_len = align - (len(self.payload) % align)
-        self.pad_bytes = self.payload + pad_len*b' '
-        return self.pad_bytes
+    def enc_aes256(self, password: Bytes):
+        """Encrypt using AES-256"""
 
-    def unpad(self)->bytes:
-        """Remove padding from bytes"""
-        self.unpad_bytes = self.payload.rstrip()
-        return self.unpad_bytes
+        salt = Bytes.get_random_bytes(AES.block_size)
+        private_key = hashlib.scrypt(password.payload, salt=salt, n=2**14, r=8, p=1, dklen=32)
+
+        # create cipher config
+        cipher_config = AES.new(private_key, AES.MODE_GCM)
+
+        cipher_text, tag = cipher_config.encrypt_and_digest(self.payload)
+
+        self.enc_block = {
+            'cipher': cipher_text,
+            'salt': salt,
+            'nonce': cipher_config.nonce,
+            'tag': tag
+        }
+
+        return self.enc_block
+
+    @staticmethod
+    def dec_aes256(enc_dict, password: Bytes):
+        """Decrypt AES-256"""
+
+        # decode the dictionary entries from base64
+        salt = enc_dict['salt']
+        cipher_text = enc_dict['cipher']
+        nonce = enc_dict['nonce']
+        tag = enc_dict['tag']
+
+        # generate the private key from the password and salt
+        private_key = hashlib.scrypt(
+            password.payload, salt=salt, n=2**14, r=8, p=1, dklen=32)
+
+        # create the cipher config
+        cipher = AES.new(private_key, AES.MODE_GCM, nonce=nonce)
+
+        # decrypt the cipher text
+        decrypted = cipher.decrypt_and_verify(cipher_text, tag)
+
+        return decrypted
