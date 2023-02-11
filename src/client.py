@@ -1,68 +1,91 @@
 #!/usr/bin/python3
 import os
 import socket
+import pickle
 from time import sleep
 from utils.utils import *
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 
+
+# Server address
 RHOST = "127.0.0.1"
 RPORT = 6969
+
+# Unique UUID
+UUID = {
+            'a': b'A'*8,
+            'b': b'B'*8,
+            'c': b'C'*8
+        }
+
+# Server Public Key
+sPUB = None
+
+# Client Socket
 Client = socket.socket()
-UUID = 'A'*8 + '-'+ 'B'*8 + '-' + 'C'*8
-SERVER_PUB = bytes()
+
+def __send_client_hello():
+    """Send Client Hello"""
+    global Client
+
+    nonce  = random_bytes()
+    chall  = randnum()
+
+    block = {
+            'chall': chall,
+            'b': UUID['b']
+        }
+
+    plaintext = pickle.dumps(block)
+    cipher = encrypt(plaintext, UUID['c'])
+
+    payload = {
+            'nonce': nonce,
+            'a': UUID['a'],
+            'cipher': cipher
+            }
+    raw_payload = pickle.dumps(payload)
+    Client.send(raw_payload)
+    return chall
+
 
 def say_hello():
-    global SERVER_PUB
-    os.system("clear")
-    # Extract A-B-C components from UUID    
-    a = UUID.split("-")[0].encode()
-    b = UUID.split("-")[1].encode()
-    c = UUID.split("-")[2].encode()
-    
-    enc = encrypt(b, a + b)
-    nonce = random_bytes()
+    """Complete Client-Server Hello"""
+    chall = __send_client_hello()
 
-    # Client Hello Payload: Nonce + Ai + [Bi]e(Ai+Bi)  
-    payload = nonce + a + enc
-    
-    print("\n[i] Sending Client Hello")
-    Client.send(payload)
+def read_server_key():
+    """Read Server Public Key"""
+    global sPUB
+    print("[i] Reading Server Public Key")
+    with open("pubkey.pem", "rb") as key_file:
+        sPUB = serialization.load_pem_public_key(
+            key_file.read(),
+            backend=default_backend()
+        )
 
+def connect_server():
+    """Connect to Server"""
+    print("[i] Trying to connect to Server")
 
-    server_hello = Client.recv(2048)
-    print("[i] Received Server Reply")
-    
-    if server_hello == b'NOT OK':
-        print("[!] Failed to validate machine\n")
-
-    else:
-        # Server Hello Payload: Nonce + [C + Spub]e(Bi)
-        _ = server_hello[0:32]
-        enc = server_hello[32:]
-        dec = decrypt(enc, b)
-        if dec[0:8] == c:
-            SERVER_PUB = dec[8:]
-            print("[i] Validated Server Hello\n")
-            return True
-
-    return False    
+    try:
+        print(f"[i] Connected to: tcp://{RHOST}:{RPORT}")
+        Client.connect((RHOST, RPORT))
+    except ConnectionRefusedError:
+        eprint("[!] Server Unreachable")
+        sleep(5)
+        os.system("clear")
+        connect_server()
 
 
 def main():
-    print("[i] Starting Client")
+    """Main function to manage voting clients"""
 
-    print(f"[i] Connecting to Server")
-    Client.connect((RHOST, RPORT))
+    connect_server()
+    read_server_key()
+    say_hello()
 
-    LHOST = Client.getsockname()[0]
-    LPORT = Client.getsockname()[1]
-
-    print(f"[C] {LHOST}:{LPORT} -> [S] {RHOST}:{RPORT}")
-    
-    sleep(2)
-    if not (say_hello()):
-        close_socket(Client)
-    
     close_socket(Client)
 
-if __name__=='__main__':
+if __name__ == '__main__':
     main()

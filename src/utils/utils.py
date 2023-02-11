@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
+import sys
 import time
 import pyaes
 import string
 import random
 import hashlib
 from base64 import b64encode
-from cryptography.hazmat.primitives import serialization as crypto_serialization
+from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.backends import default_backend as crypto_default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
 
 
 def close_socket(s):
@@ -15,7 +17,25 @@ def close_socket(s):
     print("[i] Closing Socket")
     s.close()
 
+def eprint(msg):
+    """Print to stderr"""
+    print(msg, file=sys.stderr)
 
+def randnum():
+    """Return Random Number"""
+    random.seed(time.time())
+    return random.randint(0, 999999999999)
+
+def pad(payload:bytes, align: int = 16):
+        """Pad bytes to given alignment"""
+
+        pad_len = align - (len(payload) % align)
+        padded_payload = payload + pad_len*b' '
+        return padded_payload
+
+def unpad(payload):
+    """Remove padding from bytes"""
+    return payload.rstrip()
 
 def random_bytes(size: int = 32, readable: bool = False):
     """Return random bytes"""
@@ -34,45 +54,30 @@ def random_bytes(size: int = 32, readable: bool = False):
 
     return output
 
-
 def encrypt(plaintext: bytes, password: bytes):
-    # Salt for encryption
-    salt = bytes()
-
-    # Create 32 bytes key
-    key = hashlib.pbkdf2_hmac('sha256', password, salt, 1000)
-
-    # Encryption with AES-256-CBC
-    encrypter = pyaes.Encrypter(pyaes.AESModeOfOperationCBC(key))
-    ciphertext = encrypter.feed(plaintext)
-    ciphertext += encrypter.feed()
+    #print("[i] Orig Hex:\t", hashlib.sha256(plaintext).hexdigest())
+    key = hashlib.sha256(password).digest()
+    cipher = Cipher(algorithms.AES(key), modes.CBC(bytes(16)), backend=default_backend())
+    encryptor = cipher.encryptor()
+    ciphertext = encryptor.update(pad(plaintext)) + encryptor.finalize()
+    #print("[i] Enc Hex:\t", hashlib.sha256(ciphertext).hexdigest())
     return ciphertext
 
-
 def decrypt(ciphertext: bytes, password: bytes):
-    salt = bytes()
-    key = hashlib.pbkdf2_hmac('sha256', password, salt, 1000)
-    decrypter = pyaes.Decrypter(pyaes.AESModeOfOperationCBC(key))
-    decryptedData = decrypter.feed(ciphertext)
-    decryptedData += decrypter.feed()
-    return decryptedData
+    #print("[i] Enc Hex:\t", hashlib.sha256(ciphertext).hexdigest())
+    key = hashlib.sha256(password).digest()
+    cipher = Cipher(algorithms.AES(key), modes.CBC(bytes(16)), backend=default_backend())
+    decryptor = cipher.decryptor()
+    plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+    #print("[i] Decrypt Hex:\t", hashlib.sha256(plaintext).hexdigest())
+    return unpad(plaintext)
 
 def gen_keys():
-    key = rsa.generate_private_key(
-        backend=crypto_default_backend(),
+    private_key = rsa.generate_private_key(
         public_exponent=65537,
-        key_size=2048
+        key_size=2048,
+        backend=default_backend()
     )
-
-    private_key = key.private_bytes(
-        crypto_serialization.Encoding.PEM,
-        crypto_serialization.PrivateFormat.PKCS8,
-        crypto_serialization.NoEncryption()
-    )
-
-    public_key = key.public_key().public_bytes(
-        crypto_serialization.Encoding.OpenSSH,
-        crypto_serialization.PublicFormat.OpenSSH
-    )
-
-    return[private_key, public_key]
+    public_key = private_key.public_key()
+    
+    return[public_key, private_key]

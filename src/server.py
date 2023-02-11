@@ -1,88 +1,131 @@
 #!/usr/bin/python3
 import os
+import sys
+import pickle
 import socket
 from time import sleep
 from utils.utils import *
+from stat import S_IREAD, S_IRGRP, S_IROTH
+from cryptography.hazmat.primitives import serialization
 
+# interface to start server on
 LHOST = "127.0.0.1"
 LPORT = 6969
 
-UUID_TABLE = [{'a': 'A'*8, 'b': 'B'*8 , 'c': 'C'*8}, {'a': 'D'*8, 'b': 'E'*8 , 'c': 'F'*8}]
+# Sockets to handle connection
+hClient = None
+Server = None
 
-Server = socket.socket()
-CHandler = None             # Client Socket Handle
-PRIV, PUB = gen_keys()
+# Keys
+kPub = None
+kPriv = None
+
+# Valid UUIDs
+VALID_UUID = [{
+    'a': b'A'*8,
+    'b': b'B'*8,
+    'c': b'C'*8
+    }]
+
+def __closeall():
+    global Server, hClient
+    hClient.close()
+    Server.close()
+
+
+def init_keys():
+    """Generate server keypair & save them"""
+    global kPub, kPriv
+
+    print("\n[i] Generating Key Pair")
+
+    kPub, kPriv = gen_keys()
+
+    # Delete any pre-existing keys
+    if os.path.exists("pubkey.pem"):
+        os.remove("pubkey.pem")
+
+    if os.path.exists("privkey.pem"):
+        os.remove("privkey.pem")
+
+    # Save public key
+    with open("pubkey.pem", "wb") as f:
+        raw_pub_key = kPub.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        f.write(raw_pub_key)
+
+    # Save private key
+    with open("privkey.pem", "wb") as f:
+        raw_priv_key = kPriv.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        f.write(raw_priv_key)
+
+    os.chmod("privkey.pem", S_IREAD|S_IRGRP|S_IROTH)
+    print("[i] Saved Key Files\n")
+
+def init_socket():
+    """Start Server Socket"""
+    global Server
+
+    print("[i] Intializing Server")
+    Server = socket.socket()
+    Server.bind((LHOST, LPORT))
+    Server.listen()
+    print("[i] Listening\n")
+
+
+def accept_conn():
+    """Receive Connection from client"""
+    global Server
+    global hClient
+
+    # Accept connection
+    hClient, addr = Server.accept()
+
+    print(f"[i] Connection Received from: tcp://{addr[0]}:{addr[1]}")
+
+def __handle_client_hello():
+    """Handle and verify Client Hello"""
+    global hClient
+
+    raw_payload = hClient.recv(2048)
+    payload = pickle.loads(raw_payload)
+    
+    for uuid in VALID_UUID:
+        if uuid['a'] == payload['a']:
+            enc = payload['cipher']
+            dec = decrypt(enc, uuid['c'])
+            block = pickle.loads(dec)
+            if block['b'] == uuid['b']:
+                resp = block['chall'] + 1
+                return resp
+    return None
+
 
 def say_hello():
-    os.system("clear")
-    c = bytes()
-    valid = False
-    decrypted = bytes()
-
-    print("\n[i] Listening For Client Hello")
-    payload = CHandler.recv(2048)
-    
-    # Client Hello Payload: Nonce + Ai + [Bi]e(Ai+Bi)  
-    _ = payload[0:32]
-    a = payload[32:40]
-    enc = payload[40:]
-
-    for x in UUID_TABLE:
-        # Check if Ai matches any
-        if x['a'].encode() == a :
-
-            # Get e(Ai + Bi)
-            key = x['a'].encode() + x['b'].encode()
-            
-            # Get Bi from [Bi]e(Ai+Bi)
-            decrypted = decrypt(enc, key)
-
-            if decrypted == x['b'].encode():
-                valid = True
-                c = x['c'].encode()
-
-
-    if valid:
-        print("[i] Client Verified!")
-        print("[i] Sending Server Hello!")
-        
-        # Server Hello Payload: Nonce + [C + Spub]e(Bi)
-        nonce = random_bytes()
-        payload = nonce + encrypt(c + PUB, decrypted)
-        CHandler.send(payload)
-        print("[i] Sent Server Hello\n")
+    """Complete Client-Server Hello"""
+    if __handle_client_hello():
+        print("[i] Client Hello Verified!")
     else:
-        CHandler.send("[!] Invalid Machine\n")
-        print("NOT OK")
-
-    return valid
-
+        eprint("[!] Invalid Client")
+        sys.exit(-1)
 
 def main():
-    global CHandler
-    print("[i] Starting Server")
+    """Main function to manage voting server"""
 
-    print(f"[i] Binding To Interface")
-    Server.bind((LHOST, LPORT))
+    print("[i] Initializing Voting Server")
 
-    print(f"[i] Listening For Connections!")
-    Server.listen()
+    init_keys()
+    init_socket()
+    accept_conn()
+    say_hello()
 
-    print("[i] Server is ready to accept connections")
-    CHandler, addr = Server.accept()
-
-    RHOST = addr[0]
-    RPORT = addr[1]
-
-    print(f"[S] {LHOST}:{LPORT} -> [C] {RHOST}:{RPORT}")
-
-    sleep(2)
-    if not (say_hello()):
-        close_socket(CHandler)
-        close_socket(Server)
-
-    close_socket(CHandler)
-    close_socket(Server)
+    __closeall()
 
 if __name__ == '__main__':
     main()
