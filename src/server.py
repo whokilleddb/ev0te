@@ -134,7 +134,6 @@ def say_hello():
     __handle_server_hello(uuid, resp)
     print("[i] Sent Server Hello")
 
-
 def main():
     """Main function to manage voting server"""
 

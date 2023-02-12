@@ -22,6 +22,9 @@ UUID = {
 # Server Public Key
 sPUB = None
 
+# Session Token
+TSES = None
+
 # Client Socket
 Client = socket.socket()
 
