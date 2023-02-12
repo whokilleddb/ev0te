@@ -23,7 +23,9 @@ UUID = {
 sPUB = None
 
 # Session Token
+SID = None
 TSES = None
+DELTA = None
 
 # Client Socket
 Client = socket.socket()
@@ -60,12 +62,10 @@ def __handle_server_hello(chall):
     block = pickle.loads(dec)
     if block['c'] == UUID['c']:
         sign = block['signature']
-        print(sign)
         result = verify_sign(sPUB, str(chall+1).encode(), sign)
         if result:
             return True
     return False
-
 
 def say_hello():
     """Complete Client-Server Hello"""
@@ -101,12 +101,69 @@ def connect_server():
         #os.system("clear")
         connect_server()
 
+def generate_tsession():
+    """Generate Tsession"""
+    global TSES, SID
+    TSES = randnum()
+    SID = hashlib.sha256(str(TSES).encode()).digest()
+    print(f"[i] Session Token: {TSES}")
+    print(f"[i] Session Identifier: {SID}")
+
+def send_tsession():
+    """Send Tesseion"""
+
+    nonce = random_bytes()
+    payload = {
+        'nonce': nonce,
+        'TSESSION': TSES
+    }
+
+    pickle_payload = pickle.dumps(payload)
+    
+    enc = sPUB.encrypt(
+        pickle_payload,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    Client.send(enc)
+
+def sendd(msg):
+    """Update Delta"""
+    global TSES, SID, DELTA, HCLIENT
+
+    DELTA = randnum()
+    payload = {
+        'delta': DELTA,
+        'payload': msg
+    }
+    raw_payload = pickle.dumps(payload)
+    message = encrypt(raw_payload, SID)
+    TSES = TSES + DELTA
+    SID = hashlib.sha256(str(TSES).encode()).digest()
+    HCLIENT.send(message)
+
+def recvv(size: 2048):
+    """Recv data"""
+
+    global Client, SID, DELTA, TES
+    raw = Client(size)
+    raw_payload = decrypt(raw, SID)
+    payload = pickle.loads(raw_payload)
+    DELTA = payload['delta']
+    TSES = TSES + DELTA
+    SID = hashlib.sha256(str(TSES).encode())
+
 def main():
     """Main function to manage voting clients"""
 
     connect_server()
     read_server_key()
     say_hello()
+    generate_tsession()
+    send_tsession()
 
     close_socket(Client)
 

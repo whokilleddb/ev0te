@@ -13,12 +13,17 @@ LHOST = "127.0.0.1"
 LPORT = 6969
 
 # Sockets to handle connection
-hClient = None
+HCLIENT = None
 Server = None
 
 # Keys
-kPub = None
-kPriv = None
+PUBKEY = None
+PRIVKEY = None
+
+# Session ID
+TSES = None
+SID = None
+DELTA = None
 
 # Valid UUIDs
 VALID_UUID = [{
@@ -28,17 +33,18 @@ VALID_UUID = [{
     }]
 
 def __closeall():
-    global Server, hClient
-    hClient.close()
+    global Server, HCLIENT
+    print("[i] Closing All Sockets")    
+    HCLIENT.close()
     Server.close()
-
+    
 def init_keys():
     """Generate server keypair & save them"""
-    global kPub, kPriv
+    global PUBKEY, PRIVKEY
 
-    print("\n[i] Generating Key Pair")
+    print("[i] Generating Key Pair")
 
-    kPub, kPriv = gen_keys()
+    PUBKEY, PRIVKEY = gen_keys()
 
     # Delete any pre-existing keys
     if os.path.exists("pubkey.pem"):
@@ -49,7 +55,7 @@ def init_keys():
 
     # Save public key
     with open("pubkey.pem", "wb") as f:
-        raw_pub_key = kPub.public_bytes(
+        raw_pub_key = PUBKEY.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
@@ -57,7 +63,7 @@ def init_keys():
 
     # Save private key
     with open("privkey.pem", "wb") as f:
-        raw_priv_key = kPriv.private_bytes(
+        raw_priv_key = PRIVKEY.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption()
@@ -65,7 +71,7 @@ def init_keys():
         f.write(raw_priv_key)
 
     os.chmod("privkey.pem", S_IREAD|S_IRGRP|S_IROTH)
-    print("[i] Saved Key Files\n")
+    print("[i] Saved Key Files")
 
 def init_socket():
     """Start Server Socket"""
@@ -75,23 +81,23 @@ def init_socket():
     Server = socket.socket()
     Server.bind((LHOST, LPORT))
     Server.listen()
-    print("[i] Listening\n")
+    print("[i] Listening")
 
 def accept_conn():
     """Receive Connection from client"""
     global Server
-    global hClient
+    global HCLIENT
 
     # Accept connection
-    hClient, addr = Server.accept()
+    HCLIENT, addr = Server.accept()
 
     print(f"[i] Connection Received from: tcp://{addr[0]}:{addr[1]}")
 
 def __handle_client_hello():
     """Handle and verify Client Hello"""
-    global hClient
+    global HCLIENT
 
-    raw_payload = hClient.recv(2048)
+    raw_payload = HCLIENT.recv(2048)
     payload = pickle.loads(raw_payload)
 
     for uuid in VALID_UUID:
@@ -108,7 +114,7 @@ def __handle_server_hello(uuid, resp):
     """Send Server Hello"""
     nonce = random_bytes()
     raw_resp = str(resp).encode()
-    signature = sign(raw_resp, kPriv)
+    signature = sign(raw_resp, PRIVKEY)
     block = {
             "c": uuid['c'],
             "signature": signature
@@ -120,7 +126,7 @@ def __handle_server_hello(uuid, resp):
             'cipher': cipher
             }
     raw_payload = pickle.dumps(payload)
-    hClient.send(raw_payload)
+    HCLIENT.send(raw_payload)
 
 def say_hello():
     """Complete Client-Server Hello"""
@@ -134,15 +140,62 @@ def say_hello():
     __handle_server_hello(uuid, resp)
     print("[i] Sent Server Hello")
 
+def get_tsession():
+    """Fetch Session ID"""
+
+    global PUBKEY, TSES, SID
+    raw_payload = HCLIENT.recv(2048)
+    pickle_payload = PRIVKEY.decrypt(
+        raw_payload,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+
+    payload = pickle.loads(pickle_payload)
+    TSES = payload['TSESSION']
+    SID = hashlib.sha256(str(TSES).encode()).digest()
+    print(f"[i] Session Token: {TSES}")
+    print(f"[i] Session Identifier: {SID}")
+
+def sendd(msg):
+    """Update Delta"""
+    global TSES, SID, DELTA, HCLIENT
+
+    DELTA = randnum()
+    payload = {
+        'delta': DELTA,
+        'payload': msg
+    }
+    raw_payload = pickle.dumps(payload)
+    message = encrypt(raw_payload, SID)
+    TSES = TSES + DELTA
+    SID = hashlib.sha256(str(TSES).encode()).digest()
+    HCLIENT.send(message)
+
+def recvv(size: 2048):
+    """Recv data"""
+
+    global Client, SID, DELTA, TES
+    raw = Client(size)
+    raw_payload = decrypt(raw, SID)
+    payload = pickle.loads(raw_payload)
+    DELTA = payload['delta']
+    TSES = TSES + DELTA
+    SID = hashlib.sha256(str(TSES).encode())
+
 def main():
     """Main function to manage voting server"""
-
+    
     print("[i] Initializing Voting Server")
 
     init_keys()
     init_socket()
     accept_conn()
     say_hello()
+    get_tsession()
 
     __closeall()
 
