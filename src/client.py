@@ -1,12 +1,12 @@
 #!/usr/bin/python3
 import os
-import socket
+import sys
 import pickle
+import socket
 from time import sleep
 from utils.utils import *
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
-
 
 # Server address
 RHOST = "127.0.0.1"
@@ -25,7 +25,7 @@ sPUB = None
 # Client Socket
 Client = socket.socket()
 
-def __send_client_hello():
+def __handle_client_hello():
     """Send Client Hello"""
     global Client
 
@@ -49,10 +49,31 @@ def __send_client_hello():
     Client.send(raw_payload)
     return chall
 
+def __handle_server_hello(chall):
+    """Handle Server Hello"""
+    raw_payload = Client.recv(2048)
+    payload = pickle.loads(raw_payload)
+    dec = decrypt(payload['cipher'], UUID['b'])
+    block = pickle.loads(dec)
+    if block['c'] == UUID['c']:
+        sign = block['signature']
+        print(sign)
+        result = verify_sign(sPUB, str(chall+1).encode(), sign)
+        if result:
+            return True
+    return False
+
 
 def say_hello():
     """Complete Client-Server Hello"""
-    chall = __send_client_hello()
+    chall = __handle_client_hello()
+    print("[i] Sent Client Hello")
+    if __handle_server_hello(chall):
+        print("[i] Server Verified")
+    else:
+        eprint("[!] Could not verify server!")
+        Client.close()
+        sys.exit(-1)
 
 def read_server_key():
     """Read Server Public Key"""
@@ -74,9 +95,8 @@ def connect_server():
     except ConnectionRefusedError:
         eprint("[!] Server Unreachable")
         sleep(5)
-        os.system("clear")
+        #os.system("clear")
         connect_server()
-
 
 def main():
     """Main function to manage voting clients"""

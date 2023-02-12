@@ -6,10 +6,13 @@ import string
 import random
 import hashlib
 from base64 import b64encode
+from Crypto.Hash import SHA256
 from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import hashes
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 
 def close_socket(s):
@@ -81,3 +84,32 @@ def gen_keys():
     public_key = private_key.public_key()
     
     return[public_key, private_key]
+
+def sign(message, privkey):
+    """Sign a message with a private key"""
+    encrypted = privkey.sign(
+        message,
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH,
+        ),
+        hashes.SHA256(),
+    )
+    return encrypted
+
+def verify_sign(pubkey, message, signature):
+    """verify a signature with public key"""
+    # Verify the signature with the public key
+    try:
+        pubkey.verify(
+            signature,
+            message,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+        return True
+    except InvalidSignature:
+        return False

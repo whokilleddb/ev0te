@@ -32,7 +32,6 @@ def __closeall():
     hClient.close()
     Server.close()
 
-
 def init_keys():
     """Generate server keypair & save them"""
     global kPub, kPriv
@@ -78,7 +77,6 @@ def init_socket():
     Server.listen()
     print("[i] Listening\n")
 
-
 def accept_conn():
     """Receive Connection from client"""
     global Server
@@ -95,7 +93,7 @@ def __handle_client_hello():
 
     raw_payload = hClient.recv(2048)
     payload = pickle.loads(raw_payload)
-    
+
     for uuid in VALID_UUID:
         if uuid['a'] == payload['a']:
             enc = payload['cipher']
@@ -103,17 +101,39 @@ def __handle_client_hello():
             block = pickle.loads(dec)
             if block['b'] == uuid['b']:
                 resp = block['chall'] + 1
-                return resp
-    return None
+                return [uuid, resp]
+    return None, None
 
+def __handle_server_hello(uuid, resp):
+    """Send Server Hello"""
+    nonce = random_bytes()
+    raw_resp = str(resp).encode()
+    signature = sign(raw_resp, kPriv)
+    block = {
+            "c": uuid['c'],
+            "signature": signature
+            }
+    raw_block = pickle.dumps(block)
+    cipher = encrypt(raw_block, uuid['b'])
+    payload = {
+            'nonce': nonce,
+            'cipher': cipher
+            }
+    raw_payload = pickle.dumps(payload)
+    hClient.send(raw_payload)
 
 def say_hello():
     """Complete Client-Server Hello"""
-    if __handle_client_hello():
-        print("[i] Client Hello Verified!")
-    else:
+    uuid, resp = __handle_client_hello()
+    if not resp:
         eprint("[!] Invalid Client")
+        __closeall()
         sys.exit(-1)
+    print("[i] Received Client Hello")
+
+    __handle_server_hello(uuid, resp)
+    print("[i] Sent Server Hello")
+
 
 def main():
     """Main function to manage voting server"""
