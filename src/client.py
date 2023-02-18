@@ -56,7 +56,6 @@ def init_keys():
     write_keys(key_dict);
     print("[i] Saved Key Files")
 
-
 def __handle_client_hello():
     """Send Client Hello"""
     global Client
@@ -182,6 +181,9 @@ def recvv(size = 2048):
     TSES = TSES + DELTA
     SID = hashlib.sha256(str(TSES).encode()).digest()
     return payload['payload']
+
+
+
 
 def main():
     """Main function to manage voting clients"""

@@ -176,6 +176,10 @@ def recvv(size= 2048):
     SID = hashlib.sha256(str(TSES).encode()).digest()
     return payload['payload']
 
+def get_ballot():
+    raw_payload = recvv()
+
+
 def main():
     """Main function to manage voting server"""
     
@@ -186,6 +190,7 @@ def main():
     accept_conn()
     say_hello()
     get_tsession()
+    get_ballot()
     __closeall()
 
 if __name__ == '__main__':

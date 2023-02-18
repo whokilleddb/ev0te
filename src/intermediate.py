@@ -33,7 +33,7 @@ class Intermediate:
     def start(self):
         self.socket.bind((self.host, self.port))
         self.socket.listen()
-        print(f"[i] Intermediate Server Listening On: {self.host}:{self.port}")
+        print(f"[i] Intermediate Server Listening On - {self.host}:{self.port}")
         self.conn, client = self.socket.accept()
         print("[i] Connected ")
 
