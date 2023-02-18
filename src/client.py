@@ -52,7 +52,6 @@ def init_keys():
             'name' : PRIVKEY_C,
             'val': PRIVKEY
         }
-
     }
     write_keys(key_dict);
     print("[i] Saved Key Files")
