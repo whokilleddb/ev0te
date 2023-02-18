@@ -158,7 +158,6 @@ def get_tsession():
     TSES = payload['TSESSION']
     SID = hashlib.sha256(str(TSES).encode()).digest()
     print(f"[i] Session Token: {TSES}")
-    print(f"[i] Session Identifier: {SID}")
 
 def sendd(msg):
     """Update Delta"""
@@ -173,18 +172,23 @@ def sendd(msg):
     message = encrypt(raw_payload, SID)
     TSES = TSES + DELTA
     SID = hashlib.sha256(str(TSES).encode()).digest()
+    print(TSES)
+    print(SID)
+    print(DELTA)
+    
     HCLIENT.send(message)
 
-def recvv(size: 2048):
+def recvv(size= 2048):
     """Recv data"""
 
-    global Client, SID, DELTA, TES
-    raw = Client(size)
+    global HCLIENT, SID, DELTA, TSES
+    raw = HCLIENT.recv(size)
     raw_payload = decrypt(raw, SID)
     payload = pickle.loads(raw_payload)
     DELTA = payload['delta']
     TSES = TSES + DELTA
-    SID = hashlib.sha256(str(TSES).encode())
+    SID = hashlib.sha256(str(TSES).encode()).digest()
+    return payload['payload']
 
 def main():
     """Main function to manage voting server"""
@@ -196,7 +200,6 @@ def main():
     accept_conn()
     say_hello()
     get_tsession()
-
     __closeall()
 
 if __name__ == '__main__':
