@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import sys
 import time
 import pyaes
@@ -8,8 +9,10 @@ import hashlib
 from base64 import b64encode
 from Crypto.Hash import SHA256
 from cryptography.fernet import Fernet
+from stat import S_IREAD, S_IRGRP, S_IROTH
 from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -113,3 +116,34 @@ def verify_sign(pubkey, message, signature):
         return True
     except InvalidSignature:
         return False
+
+def write_keys(key_dict):
+    pub = key_dict['pub']
+    priv = key_dict['priv']
+
+    # Delete any pre-existing keys
+    if os.path.exists(pub['name']):
+        os.remove(pub['name'])
+
+    if os.path.exists(priv['name']):
+        os.remove(priv['name'])
+
+    # Save public key
+    with open(pub['name'], "wb") as f:
+        raw_pub_key = pub['val'].public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        f.write(raw_pub_key)
+
+    # Save private key
+    with open(priv['name'], "wb") as f:
+        raw_priv_key = priv['val'].private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        f.write(raw_priv_key)
+
+    os.chmod(priv['name'], S_IREAD|S_IRGRP|S_IROTH)
+    

@@ -5,6 +5,7 @@ import pickle
 import socket
 from time import sleep
 from utils.utils import *
+from utils.consts import *
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 
@@ -22,6 +23,10 @@ UUID = {
 # Server Public Key
 sPUB = None
 
+# Client Keys
+PUBKEY = None
+PRIVKEY = None
+
 # Session Token
 SID = None
 TSES = None
@@ -29,6 +34,29 @@ DELTA = None
 
 # Client Socket
 Client = socket.socket()
+
+
+def init_keys():
+    """Generate client keypair & save them"""
+    global PUBKEY, PRIVKEY
+
+    print("[i] Generating Key Pair")
+
+    PUBKEY, PRIVKEY = gen_keys()
+    key_dict = {
+        'pub' : {
+            'name': PUBKEY_C,
+            'val': PUBKEY
+        },
+        'priv' : {
+            'name' : PRIVKEY_C,
+            'val': PRIVKEY
+        }
+
+    }
+    write_keys(key_dict);
+    print("[i] Saved Key Files")
+
 
 def __handle_client_hello():
     """Send Client Hello"""
@@ -82,7 +110,7 @@ def read_server_key():
     """Read Server Public Key"""
     global sPUB
     print("[i] Reading Server Public Key")
-    with open("pubkey.pem", "rb") as key_file:
+    with open(PUBKEY_S, "rb") as key_file:
         sPUB = serialization.load_pem_public_key(
             key_file.read(),
             backend=default_backend()
@@ -106,8 +134,7 @@ def generate_tsession():
     global TSES, SID
     TSES = randnum()
     SID = hashlib.sha256(str(TSES).encode()).digest()
-    print(f"[i] Session Token: {TSES}")
-   
+    print(f"[i] Session Token: {TSES}")   
 
 def send_tsession():
     """Send Tesseion"""
@@ -160,6 +187,7 @@ def recvv(size = 2048):
 def main():
     """Main function to manage voting clients"""
 
+    init_keys()
     connect_server()
     read_server_key()
     say_hello()

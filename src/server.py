@@ -5,8 +5,7 @@ import pickle
 import socket
 from time import sleep
 from utils.utils import *
-from stat import S_IREAD, S_IRGRP, S_IROTH
-from cryptography.hazmat.primitives import serialization
+from utils.consts import *
 
 # interface to start server on
 LHOST = "127.0.0.1"
@@ -45,32 +44,19 @@ def init_keys():
     print("[i] Generating Key Pair")
 
     PUBKEY, PRIVKEY = gen_keys()
+    key_dict = {
+        'pub' : {
+            'name': PUBKEY_S,
+            'val': PUBKEY
+        },
+        'priv' : {
+            'name' : PRIVKEY_S,
+            'val': PRIVKEY
+        }
 
-    # Delete any pre-existing keys
-    if os.path.exists("pubkey.pem"):
-        os.remove("pubkey.pem")
+    }
+    write_keys(key_dict);
 
-    if os.path.exists("privkey.pem"):
-        os.remove("privkey.pem")
-
-    # Save public key
-    with open("pubkey.pem", "wb") as f:
-        raw_pub_key = PUBKEY.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        )
-        f.write(raw_pub_key)
-
-    # Save private key
-    with open("privkey.pem", "wb") as f:
-        raw_priv_key = PRIVKEY.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        )
-        f.write(raw_priv_key)
-
-    os.chmod("privkey.pem", S_IREAD|S_IRGRP|S_IROTH)
     print("[i] Saved Key Files")
 
 def init_socket():
