@@ -6,6 +6,7 @@ import socket
 from time import sleep
 from utils.utils import *
 from utils.consts import *
+from cballot import *
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 
@@ -182,7 +183,10 @@ def recvv(size = 2048):
     SID = hashlib.sha256(str(TSES).encode()).digest()
     return payload['payload']
 
-
+def get_ballot():
+    """Get Ballot"""
+    ballot = cBallot("127.0.0.1", 6900, 6969696969, PUBKEY_C, PRIVKEY_C)
+    ballot.get_ballot()
 
 
 def main():
@@ -194,6 +198,8 @@ def main():
     say_hello()
     generate_tsession()
     send_tsession()
+    get_ballot()
+    sendd(b'Hi')
     close_socket(Client)
 
 if __name__ == '__main__':

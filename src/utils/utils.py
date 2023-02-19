@@ -147,3 +147,26 @@ def write_keys(key_dict):
 
     os.chmod(priv['name'], S_IREAD|S_IRGRP|S_IROTH)
     
+def encrypt_a(msg: bytes, pubkey):
+    encrypted = pubkey.encrypt(
+        msg,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+
+    return encrypted
+
+def decrypt_a(enc: bytes, privkey):
+    original_message = privkey.decrypt(
+        enc,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+
+    return original_message
