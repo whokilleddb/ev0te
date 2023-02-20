@@ -36,9 +36,23 @@ class cBallot:
         raw_payload = encrypt_a(payload, self.i_pubkey)
         self.socket.send(raw_payload)
 
+    def fetch_enc(self, biometric):
+        """Fetch Encrypted Ballot"""
+        raw_payload = self.socket.recv(2048)
+        dec_payload = decrypt(raw_payload, biometric.encode())
+        payload = pickle.loads(dec_payload)
+        ret_dict = {
+            'int_num': payload['int_num'] + 1,
+            'ballot': payload['ballot']
+        }
+        return ret_dict
+
+
     def get_ballot(self):
         """Get Ballot"""
         self.connect()
         self.send_vid()
+        ret = self.fetch_enc('aaaaaaaaaaaaaaa')
         self.socket.close()
+        return ret
 

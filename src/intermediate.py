@@ -38,14 +38,28 @@ class Intermediate:
         self.conn, client = self.socket.accept()
         print(f"[i] Connection received from: {client[0]}:{client[1]}")
 
-    def get_vid(self):
+    def send_ballot(self):
         """Get VID"""
         raw_payload = self.conn.recv(2048)
         dec = decrypt_a(raw_payload, self.privkey)
         payload = pickle.loads(dec)
         vid = payload['vid']
-        print('[i] Vid:\t', vid)
-        return vid  
+        print('[i] Voter ID Number: ', vid)
+        biometric = VOTER_DB[str(vid)]['biometric']
+        nonce = randnum()
+        int_num = randnum()
+        VOTER_DB[str(vid)]['int_num'] = int_num
+        
+        auth_dict = {
+            'nonce': nonce,
+            'int_num': int_num,
+            'ballot': BALLOT
+        }
+        payload = pickle.dumps(auth_dict)
+        raw_payload = encrypt(payload, biometric.encode())
+        self.conn.send(raw_payload)
+        
+
 
     def close_all(self):
         if self.conn:
@@ -60,7 +74,7 @@ class Intermediate:
 def main():
     i_server = Intermediate(IHOST, IPORT)
     i_server.start()
-    i_server.get_vid()
+    i_server.send_ballot()
     i_server.close_all()
 #    del i_server 
 

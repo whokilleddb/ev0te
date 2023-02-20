@@ -31,6 +31,13 @@ VALID_UUID = [{
     'c': b'C'*8
     }]
 
+
+MY_GRAND_TOTAL = BALLOT = {
+    'PARTY A': 0,
+    'PARTY B': 0,
+    'PARTY C': 0,
+}
+
 def __closeall():
     global Server, HCLIENT
     print("[i] Closing All Sockets")    
@@ -178,6 +185,14 @@ def recvv(size= 2048):
 
 def get_ballot():
     raw_payload = recvv()
+    dec_payload = decrypt_a(raw_payload, PRIVKEY)
+    payload = pickle.loads(dec_payload)
+    print(payload)
+    if payload['int_num'] :
+        for x in payload['ballot'].keys():
+            if payload['ballot'][x] == 1:
+                MY_GRAND_TOTAL[x] = MY_GRAND_TOTAL[x] +1
+
 
 
 def main():
@@ -192,6 +207,8 @@ def main():
     get_tsession()
     get_ballot()
     __closeall()
+
+    print(MY_GRAND_TOTAL)
 
 if __name__ == '__main__':
     main()

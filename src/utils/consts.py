@@ -10,3 +10,21 @@ PRIVKEY_C = "c_privkey.pem"
 
 PUBKEY_I = "i_pubkey.pem"
 PRIVKEY_I = "i_privkey.pem"
+
+VOTER_DB = {
+    '6969696969' : {
+        'biometric': 'aaaaaaaaaaaaaaa',
+        'int_num': 0
+    },
+    '6969696968' : {
+        'biometric': 'aaaaaaaaaaaaaab',
+        'int_num': 0
+    },
+}
+
+BALLOT = {
+    'PARTY A': 0,
+    'PARTY B': 0,
+    'PARTY C': 0,
+
+}

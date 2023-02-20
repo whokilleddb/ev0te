@@ -186,8 +186,16 @@ def recvv(size = 2048):
 def get_ballot():
     """Get Ballot"""
     ballot = cBallot("127.0.0.1", 6900, 6969696969, PUBKEY_C, PRIVKEY_C)
-    ballot.get_ballot()
+    return ballot.get_ballot()
 
+def cast_vote(ballot):
+    """send ballot response"""
+    global sPUB
+    payload = encrypt_a(pickle.dumps(ballot), sPUB)
+    sendd(payload)
+    print(type(payload))
+    print(payload)
+    print("[i] Vote Casted!")
 
 def main():
     """Main function to manage voting clients"""
@@ -198,8 +206,9 @@ def main():
     say_hello()
     generate_tsession()
     send_tsession()
-    get_ballot()
-    sendd(b'Hi')
+    ballot = get_ballot()
+    ballot['ballot']['PARTY A'] = 1;
+    cast_vote(ballot)
     close_socket(Client)
 
 if __name__ == '__main__':
