@@ -1,214 +1,102 @@
 #!/usr/bin/python3
-import os
+"""
+This file constains the class which defines the voting server and it's various functions
+"""
+
 import sys
-import pickle
+import json
 import socket
 from time import sleep
 from utils.utils import *
-from utils.consts import *
 
-# interface to start server on
-LHOST = "127.0.0.1"
-LPORT = 6969
+class Server:
+    """Class to Initiate Voting Server"""
 
-# Sockets to handle connection
-HCLIENT = None
-Server = None
+    def __init__(self):
+        """Initialize Server"""
+        try:
+            print("[i] Reading Configuration Options")
+            with open('config.json', 'r') as file:
+                json_object = json.load(file)
+            server_config = json_object['v_server']
+            self.s_socket = socket.socket()
+            self.host = server_config['host']
+            self.port = server_config['port']
 
-# Keys
-PUBKEY = None
-PRIVKEY = None
-
-# Session ID
-TSES = None
-SID = None
-DELTA = None
-
-# Valid UUIDs
-VALID_UUID = [{
-    'a': b'A'*8,
-    'b': b'B'*8,
-    'c': b'C'*8
-    }]
-
-
-MY_GRAND_TOTAL = BALLOT = {
-    'PARTY A': 0,
-    'PARTY B': 0,
-    'PARTY C': 0,
-}
-
-def __closeall():
-    global Server, HCLIENT
-    print("[i] Closing All Sockets")    
-    HCLIENT.close()
-    Server.close()
-    
-def init_keys():
-    """Generate server keypair & save them"""
-    global PUBKEY, PRIVKEY
-
-    print("[i] Generating Key Pair")
-
-    PUBKEY, PRIVKEY = gen_keys()
-    key_dict = {
-        'pub' : {
-            'name': PUBKEY_S,
-            'val': PUBKEY
-        },
-        'priv' : {
-            'name' : PRIVKEY_S,
-            'val': PRIVKEY
-        }
-
-    }
-    write_keys(key_dict);
-
-    print("[i] Saved Key Files")
-
-def init_socket():
-    """Start Server Socket"""
-    global Server
-
-    print("[i] Intializing Server")
-    Server = socket.socket()
-    Server.bind((LHOST, LPORT))
-    Server.listen()
-    print("[i] Listening")
-
-def accept_conn():
-    """Receive Connection from client"""
-    global Server
-    global HCLIENT
-
-    # Accept connection
-    HCLIENT, addr = Server.accept()
-
-    print(f"[i] Connection Received from: tcp://{addr[0]}:{addr[1]}")
-
-def __handle_client_hello():
-    """Handle and verify Client Hello"""
-    global HCLIENT
-
-    raw_payload = HCLIENT.recv(2048)
-    payload = pickle.loads(raw_payload)
-
-    for uuid in VALID_UUID:
-        if uuid['a'] == payload['a']:
-            enc = payload['cipher']
-            dec = decrypt(enc, uuid['c'])
-            block = pickle.loads(dec)
-            if block['b'] == uuid['b']:
-                resp = block['chall'] + 1
-                return [uuid, resp]
-    return None, None
-
-def __handle_server_hello(uuid, resp):
-    """Send Server Hello"""
-    nonce = random_bytes()
-    raw_resp = str(resp).encode()
-    signature = sign(raw_resp, PRIVKEY)
-    block = {
-            "c": uuid['c'],
-            "signature": signature
+            print("[i] Generating Server Keys")
+            self.pubkey, self.privkey = gen_keys()
+            key_dict = {
+                'pub' : {
+                    'name': server_config['keyfiles']['public'],
+                    'val': self.pubkey
+                },
+                'priv' : {
+                    'name' : server_config['keyfiles']['private'],
+                    'val': self.privkey
+                }
             }
-    raw_block = pickle.dumps(block)
-    cipher = encrypt(raw_block, uuid['b'])
-    payload = {
-            'nonce': nonce,
-            'cipher': cipher
-            }
-    raw_payload = pickle.dumps(payload)
-    HCLIENT.send(raw_payload)
+            print("[i] Writing keys to Disc")
+            write_keys(key_dict)
 
-def say_hello():
-    """Complete Client-Server Hello"""
-    uuid, resp = __handle_client_hello()
-    if not resp:
-        eprint("[!] Invalid Client")
-        __closeall()
-        sys.exit(-1)
-    print("[i] Received Client Hello")
+        except FileNotFoundError:
+            eprint("[!] Could not file config.json")
+            sys.exit(-1)
 
-    __handle_server_hello(uuid, resp)
-    print("[i] Sent Server Hello")
+        except KeyError:
+            eprint("[i] Invalid Config File")
+            sys.exit(-2)
 
-def get_tsession():
-    """Fetch Session ID"""
+    def start(self):
+        """Start the socket server"""
+        print(f"[i] Starting Voting Server")
+        try:
+            self.s_socket.bind((self.host, self.port))
+            self.s_socket.listen()
+            print(f"[i] Listening on - tcp://{self.host}:{self.port}")
+        except OSError as e:
+            if e.errno == 98:
+                eprint("[i] Port already in use!")
+                eprint("[i] Retrying in 2s!")
+                sleep(2)
+                self.start()
+            else:
+                eprint(f"[!] Error occured as: {e}")
+                sys.exit(-3)
 
-    global PUBKEY, TSES, SID
-    raw_payload = HCLIENT.recv(2048)
-    pickle_payload = PRIVKEY.decrypt(
-        raw_payload,
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
+    def accept(self):
+        """Accept client connections"""
+        conn, addr = self.s_socket.accept()
+        print(f"[i] Got connection from {addr[0]}:{addr[1]}")
+        return conn
 
-    payload = pickle.loads(pickle_payload)
-    TSES = payload['TSESSION']
-    SID = hashlib.sha256(str(TSES).encode()).digest()
-    print(f"[i] Session Token: {TSES}")
+    def __del__(self):
+        self.s_socket.close()
 
-def sendd(msg):
-    """Update Delta"""
-    global TSES, SID, DELTA, HCLIENT
+class HClinet:
+    """Client Handler Object for Clients"""
+    def __init__(self, conn, server):
+        self.conn = conn
+        self.pubkey = server.pubkey
+        self.privkey = server.privkey
 
-    DELTA = randnum()
-    payload = {
-        'delta': DELTA,
-        'payload': msg
-    }
-    raw_payload = pickle.dumps(payload)
-    message = encrypt(raw_payload, SID)
-    TSES = TSES + DELTA
-    SID = hashlib.sha256(str(TSES).encode()).digest()
-    print(TSES)
-    print(SID)
-    print(DELTA)
-    
-    HCLIENT.send(message)
-
-def recvv(size= 2048):
-    """Recv data"""
-
-    global HCLIENT, SID, DELTA, TSES
-    raw = HCLIENT.recv(size)
-    raw_payload = decrypt(raw, SID)
-    payload = pickle.loads(raw_payload)
-    DELTA = payload['delta']
-    TSES = TSES + DELTA
-    SID = hashlib.sha256(str(TSES).encode()).digest()
-    return payload['payload']
-
-def get_ballot():
-    raw_payload = recvv()
-    dec_payload = decrypt_a(raw_payload, PRIVKEY)
-    payload = pickle.loads(dec_payload)
-    print(payload)
-    if payload['int_num'] :
-        for x in payload['ballot'].keys():
-            if payload['ballot'][x] == 1:
-                MY_GRAND_TOTAL[x] = MY_GRAND_TOTAL[x] +1
-
-
+    def __del__(self):
+        self.conn.close()
 
 def main():
-    """Main function to manage voting server"""
-    
+    """Main function to manage voting server"""    
+
     print("[i] Initializing Voting Server")
+    server = Server()
+    server.start()
 
-    init_keys()
-    init_socket()
-    accept_conn()
-    say_hello()
-    get_tsession()
-    get_ballot()
-    __closeall()
+    # Accept one connection at a time
+    while True:
+        _conn = server.accept()
+        conn = HClinet(_conn, server)
+        del conn
+        break;
+    del server
 
-    print(MY_GRAND_TOTAL)
 
 if __name__ == '__main__':
     main()
