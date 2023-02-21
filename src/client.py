@@ -262,43 +262,44 @@ def get_user_vote(ballot):
 
 def main():
     """Main function to run client functions"""
-    print("[i] Initializing Voter Client")
-    client = Client(UUID)
-    client.connect()
-    
-    if client.say_hello():
-        print("[i] Server verified!")
-    else:
-        eprint("[!] Invalid Server Signature")
-        sys.exit(-1)
-
-    # get VID input
-    ROOT = tk.Tk()
-    #ROOT.withdraw()
-
-    # the input dialog
-    vid = None
-    biometric = None
     while True:
-        vid = simpledialog.askstring(title="Voter ID", prompt="Enter voter id:")
-        if vid:
-            break
+        print("[i] Initializing Voter Client")
+        client = Client(UUID)
+        client.connect()
+        
+        if client.say_hello():
+            print("[i] Server verified!")
+        else:
+            eprint("[!] Invalid Server Signature")
+            sys.exit(-1)
 
-    while True:        
-        biometric = simpledialog.askstring(title="Biometric", prompt="Enter biometric signature:")
-        if biometric:
-            break
+        # get VID input
+        ROOT = tk.Tk()
+        #ROOT.withdraw()
 
-    ballot_dict = client.get_ballot(vid, biometric)
-    ballot = ballot_dict['ballot']
+        # the input dialog
+        vid = None
+        biometric = None
+        while True:
+            vid = simpledialog.askstring(title="Voter ID", prompt="Enter voter id:")
+            if vid:
+                break
 
-    # Get User Vote
-    ballot_dict['ballot'] = get_user_vote(ballot)
+        while True:        
+            biometric = simpledialog.askstring(title="Biometric", prompt="Enter biometric signature:")
+            if biometric:
+                break
 
-    # Cast vote
-    client.cast_vote(ballot_dict)
+        ballot_dict = client.get_ballot(vid, biometric)
+        ballot = ballot_dict['ballot']
 
-    client.c_socket.close()
+        # Get User Vote
+        ballot_dict['ballot'] = get_user_vote(ballot)
+
+        # Cast vote
+        client.cast_vote(ballot_dict)
+
+        client.c_socket.close()
 
 if __name__ == '__main__':
     main()
