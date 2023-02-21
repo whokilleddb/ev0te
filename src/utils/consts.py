@@ -2,29 +2,23 @@
 
 """Constants for a lot of things"""
 
-PUBKEY_S = "s_pubkey.pem"
-PRIVKEY_S = "s_privkey.pem"
+UUID_DB = [
+    { 'a': b'A'*8, 'b': b'B'*8, 'c': b'C'*8 },
+    { 'a': b'D'*8, 'b': b'E'*8, 'c': b'F'*8 },
+    { 'a': b'G'*8, 'b': b'H'*8, 'c': b'I'*8 },
+    { 'a': b'J'*8, 'b': b'K'*8, 'c': b'L'*8 }
+]
 
-PUBKEY_C = "c_pubkey.pem"
-PRIVKEY_C = "c_privkey.pem"
-
-PUBKEY_I = "i_pubkey.pem"
-PRIVKEY_I = "i_privkey.pem"
 
 VOTER_DB = {
-    '6969696969' : {
-        'biometric': 'aaaaaaaaaaaaaaa',
-        'int_num': 0
-    },
-    '6969696968' : {
-        'biometric': 'aaaaaaaaaaaaaab',
-        'int_num': 0
-    },
+    '1234': '5678',
+    'abcd': 'efgh',
+    'ijkl': 'mnop'
 }
 
 BALLOT = {
     'PARTY A': 0,
     'PARTY B': 0,
     'PARTY C': 0,
-
 }
+
