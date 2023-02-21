@@ -15,6 +15,34 @@ from cryptography.hazmat.primitives import serialization
 # Unique UUID
 UUID = {'a': b'A'*8, 'b': b'B'*8, 'c': b'C'*8 }
 
+class PartySelector:
+    def __init__(self, options):
+        self.value = tk.StringVar()
+        self.options = options
+        
+        self.frame = tk.Frame()
+        self.frame.pack()
+        
+        for key in self.options:
+            button = tk.Radiobutton(self.frame, text=key, variable=self.value, value=key)
+            button.pack(anchor="w")
+            
+        self.button = tk.Button(self.frame, text="Select", command=self.select)
+        self.button.pack()
+        
+    def select(self):
+        self.frame.quit()  # Stop the mainloop
+        self.frame.destroy()  # Destroy the frame
+        # Return the selected value
+        return self.value.get()
+        
+def select_party(options):
+    root = tk.Tk()
+    selector = PartySelector(options)
+    root.mainloop()
+    # When the mainloop is finished, return the selected value
+    return selector.select()
+
 class cBallot:
     """Class to fetch ballot from Intermediate server"""
     def __init__(self, vid, biometric, pubkey, privkey):
@@ -226,7 +254,9 @@ class Client:
 
 def get_user_vote(ballot):
     """Get Vote"""
-    ballot['PARTY A'] = 1
+
+    choice = select_party(ballot)
+    ballot[choice] = 1
     return ballot
 
 
@@ -244,7 +274,7 @@ def main():
 
     # get VID input
     ROOT = tk.Tk()
-    ROOT.withdraw()
+    #ROOT.withdraw()
 
     # the input dialog
     vid = None
@@ -264,6 +294,7 @@ def main():
 
     # Get User Vote
     ballot_dict['ballot'] = get_user_vote(ballot)
+
     # Cast vote
     client.cast_vote(ballot_dict)
 
