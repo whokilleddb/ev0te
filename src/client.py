@@ -1,215 +1,304 @@
 #!/usr/bin/python3
 import os
 import sys
+import json
 import pickle
 import socket
+import tkinter as tk
+from tkinter import *
 from time import sleep
 from utils.utils import *
 from utils.consts import *
-from cballot import *
-from cryptography.hazmat.backends import default_backend
+from tkinter import simpledialog
 from cryptography.hazmat.primitives import serialization
 
-# Server address
-RHOST = "127.0.0.1"
-RPORT = 6969
-
 # Unique UUID
-UUID = {
-            'a': b'A'*8,
-            'b': b'B'*8,
-            'c': b'C'*8
+UUID = {'a': b'A'*8, 'b': b'B'*8, 'c': b'C'*8 }
+
+class PartySelector:
+    def __init__(self, options):
+        self.value = tk.StringVar()
+        self.options = options
+        
+        self.frame = tk.Frame()
+        self.frame.pack()
+        
+        for key in self.options:
+            button = tk.Radiobutton(self.frame, text=key, variable=self.value, value=key)
+            button.pack(anchor="w")
+            
+        self.button = tk.Button(self.frame, text="Select", command=self.select)
+        self.button.pack()
+        
+    def select(self):
+        self.frame.quit()  # Stop the mainloop
+        self.frame.destroy()  # Destroy the frame
+        # Return the selected value
+        return self.value.get()
+        
+def select_party(options):
+    root = tk.Tk()
+    selector = PartySelector(options)
+    root.mainloop()
+    # When the mainloop is finished, return the selected value
+    return selector.select()
+
+class cBallot:
+    """Class to fetch ballot from Intermediate server"""
+    def __init__(self, vid, biometric, pubkey, privkey):
+        self.vid = vid
+        self.i_pub = None
+        self.pubkey = pubkey
+        self.privkey = privkey
+        self.biometric = biometric
+
+        try:
+            print("[i] Reading Configuration Options")
+            with open('config.json', 'r') as file:
+                json_object = json.load(file)
+            iserver_config = json_object['i_server']
+            self.cb_socket = socket.socket()
+            self.rhost = iserver_config['host']
+            self.rport = iserver_config['port']
+
+            if not self.i_pub:
+                print("[i] Reading Identity Server's Public Key")
+            try:
+                with open(iserver_config['keyfiles']['public'], "rb") as key_file:
+                    self.i_pub = serialization.load_pem_public_key(
+                    key_file.read(),
+                    backend=default_backend()
+                )
+            except Exception as e:
+                eprint(f"[!] Exception occured as: {e}")
+                sys.exit(-1)
+
+        except FileNotFoundError:
+                    eprint("[!] Could not file config.json")
+                    sys.exit(-1)
+
+        except KeyError:
+            eprint("[i] Invalid Config File")
+            sys.exit(-1)
+
+        except Exception as e:
+            eprint(f"[!] Error occured as: {e}")
+            sys.exit(-1)
+
+    def connect(self):
+        """Connect to server"""
+        try: 
+            self.cb_socket.connect((self.rhost, self.rport))
+            print(f"[i] Connected to tcp://{self.rhost}:{self.rport}")
+        except ConnectionRefusedError:
+            eprint("[!] Server Unreachable!")
+            eprint(f"[!] Retrying after 2s!")
+            sleep(2)
+            self.connect()
+
+    def req_ballot(self):
+        """Send Vid"""
+        vid_dict = {
+            'nonce': random_bytes(),
+            'vid': self.vid
         }
 
-# Server Public Key
-sPUB = None
+        payload = pickle.dumps(vid_dict)
+        raw_payload = encrypt_a(payload, self.i_pub)
+        self.cb_socket.send(raw_payload)
+        print("[i] Requested Ballot")
 
-# Client Keys
-PUBKEY = None
-PRIVKEY = None
+        raw_payload = self.cb_socket.recv(2048)
+        payload = decrypt(raw_payload, self.biometric.encode())
 
-# Session Token
-SID = None
-TSES = None
-DELTA = None
-
-# Client Socket
-Client = socket.socket()
-
-
-def init_keys():
-    """Generate client keypair & save them"""
-    global PUBKEY, PRIVKEY
-
-    print("[i] Generating Key Pair")
-
-    PUBKEY, PRIVKEY = gen_keys()
-    key_dict = {
-        'pub' : {
-            'name': PUBKEY_C,
-            'val': PUBKEY
-        },
-        'priv' : {
-            'name' : PRIVKEY_C,
-            'val': PRIVKEY
+        auth_dict = pickle.loads(payload)
+        
+        int_auth = auth_dict['int_num'] + 1
+        ballot = auth_dict['ballot']
+        ballot_dict = {
+            'int_auth': int_auth,
+            'ballot': ballot
         }
-    }
-    write_keys(key_dict);
-    print("[i] Saved Key Files")
+        return ballot_dict
 
-def __handle_client_hello():
-    """Send Client Hello"""
-    global Client
+    def __del__(self):
+        self.cb_socket.close()
 
-    nonce  = random_bytes()
-    chall  = randnum()
+class Client:
+    """Voting Client"""
+    def __init__(self, uuid):
 
-    block = {
-            'chall': chall,
-            'b': UUID['b']
-        }
-
-    plaintext = pickle.dumps(block)
-    cipher = encrypt(plaintext, UUID['c'])
-
-    payload = {
-            'nonce': nonce,
-            'a': UUID['a'],
-            'cipher': cipher
+        self.sid = None
+        self.uuid = uuid
+        self.tsession = None
+        try:
+            print("[i] Reading Configuration Options")
+            with open('config.json', 'r') as file:
+                json_object = json.load(file)
+            self.server_config = json_object['v_server']
+            client_config = json_object['v_client']
+            self.c_socket = socket.socket()
+            self.rhost = self.server_config['host']
+            self.rport = self.server_config['port']
+            self.s_pub = None
+            print("[i] Generating Server Keys")
+            self.pubkey, self.privkey = gen_keys()
+            key_dict = {
+                'pub' : {
+                    'name': client_config['keyfiles']['public'],
+                    'val': self.pubkey
+                },
+                'priv' : {
+                    'name' : client_config['keyfiles']['private'],
+                    'val': self.privkey
+                }
             }
-    raw_payload = pickle.dumps(payload)
-    Client.send(raw_payload)
-    return chall
+            print("[i] Writing keys to Disc")
+            write_keys(key_dict)
 
-def __handle_server_hello(chall):
-    """Handle Server Hello"""
-    raw_payload = Client.recv(2048)
-    payload = pickle.loads(raw_payload)
-    dec = decrypt(payload['cipher'], UUID['b'])
-    block = pickle.loads(dec)
-    if block['c'] == UUID['c']:
-        sign = block['signature']
-        result = verify_sign(sPUB, str(chall+1).encode(), sign)
-        if result:
-            return True
-    return False
+        except FileNotFoundError:
+                    eprint("[!] Could not file config.json")
+                    sys.exit(-1)
 
-def say_hello():
-    """Complete Client-Server Hello"""
-    chall = __handle_client_hello()
-    print("[i] Sent Client Hello")
-    if __handle_server_hello(chall):
-        print("[i] Server Verified")
-    else:
-        eprint("[!] Could not verify server!")
-        Client.close()
-        sys.exit(-1)
+        except KeyError:
+            eprint("[i] Invalid Config File")
+            sys.exit(-1)
 
-def read_server_key():
-    """Read Server Public Key"""
-    global sPUB
-    print("[i] Reading Server Public Key")
-    with open(PUBKEY_S, "rb") as key_file:
-        sPUB = serialization.load_pem_public_key(
-            key_file.read(),
-            backend=default_backend()
-        )
+        except Exception as e:
+            eprint(f"[!] Error occured as: {e}")
+            sys.exit(-1)
 
-def connect_server():
-    """Connect to Server"""
-    print("[i] Trying to connect to Server")
+    def connect(self):
+        print(f"[i] Trying to connect to Voting Server")
+        try: 
+            self.c_socket.connect((self.rhost, self.rport))
+            print(f"[i] Connected to tcp://{self.rhost}:{self.rport}")
+        except ConnectionRefusedError:
+            eprint("[!] Server Unreachable!")
+            eprint(f"[!] Retrying after 2s!")
+            sleep(2)
+            self.connect()
 
-    try:
-        print(f"[i] Connected to: tcp://{RHOST}:{RPORT}")
-        Client.connect((RHOST, RPORT))
-    except ConnectionRefusedError:
-        eprint("[!] Server Unreachable")
-        sleep(5)
-        #os.system("clear")
-        connect_server()
+        except Exception as e:
+            eprint(f"[!] Error Occured as: {e}")
+            sys.exit(-1)
 
-def generate_tsession():
-    """Generate Tsession"""
-    global TSES, SID
-    TSES = randnum()
-    SID = hashlib.sha256(str(TSES).encode()).digest()
-    print(f"[i] Session Token: {TSES}")   
+        if not self.s_pub:
+            print("[i] Reading the Server's Public Key")
+            try:
+                with open(self.server_config['keyfiles']['public'], "rb") as key_file:
+                    self.s_pub = serialization.load_pem_public_key(
+                    key_file.read(),
+                    backend=default_backend()
+                )
+            except Exception as e:
+                eprint(f"[!] Exception occured as: {e}")
+                sys.exit(-1)
 
-def send_tsession():
-    """Send Tesseion"""
+    def say_hello(self):
+        """Manage Client/Server hello"""
+        nonce = random_bytes()
+        chall = randnum()
+        print("[i] Challenge Token Issued there:", chall)
+        block = {
+            'nonce': nonce,
+            'chall': chall,
+            'b': self.uuid['b']
+        }
 
-    nonce = random_bytes()
-    payload = {
-        'nonce': nonce,
-        'TSESSION': TSES
-    }
+        raw_block = pickle.dumps(block)
+        cipher = encrypt(raw_block, self.uuid['c'])
+        payload = {
+            'a': self.uuid['a'],
+            'cipher': cipher
+        }
 
-    pickle_payload = pickle.dumps(payload)
-    
-    enc = sPUB.encrypt(
-        pickle_payload,
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
-    Client.send(enc)
+        raw_payload = pickle.dumps(payload)
 
-def sendd(msg):
-    """Update Delta"""
-    global TSES, SID, DELTA, Client
+        self.c_socket.send(raw_payload)
+        print("[i] Sent Client Hello")
 
-    DELTA = randnum()
-    payload = {
-        'delta': DELTA,
-        'payload': msg
-    }
-    raw_payload = pickle.dumps(payload)
-    message = encrypt(raw_payload, SID)
-    TSES = TSES + DELTA
-    SID = hashlib.sha256(str(TSES).encode()).digest()
-    Client.send(message)
+        raw_payload = self.c_socket.recv(2048)
+        
+        print("[i] Received Server Hello")
+        payload = pickle.loads(raw_payload)
+        cipher = payload['cipher']
+        raw_block = decrypt(cipher, self.uuid['b'])
+        block = pickle.loads(raw_block)
+        
+        if self.uuid['c'] == block['c']:
+            signature = block['signature']
+            result = verify_sign(self.s_pub, str(chall+1).encode(), signature)
+            if result:
+                return True
+        else:
+            self.c_socket.close()
+        return False
 
-def recvv(size = 2048):
-    """Recv data"""
+    def get_ballot(self, vid, biometric):
+        """Get Ballot from identity server"""
+        
+        print("[i] Voter ID: ", vid)
+        c_ballot = cBallot(vid, biometric, self.pubkey, self.privkey)
+        c_ballot.connect()
+        ballot = c_ballot.req_ballot()
+        del c_ballot
 
-    global Client, SID, DELTA, TSES
-    raw = Client.recv(size)
-    raw_payload = decrypt(raw, SID)
-    payload = pickle.loads(raw_payload)
-    DELTA = payload['delta']
-    TSES = TSES + DELTA
-    SID = hashlib.sha256(str(TSES).encode()).digest()
-    return payload['payload']
+        return ballot
 
-def get_ballot():
-    """Get Ballot"""
-    ballot = cBallot("127.0.0.1", 6900, 6969696969, PUBKEY_C, PRIVKEY_C)
-    return ballot.get_ballot()
+    def cast_vote(self, ballot):
+        ballot['nonce'] = randnum()
+        payload = encrypt_a(pickle.dumps(ballot), self.s_pub)
+        self.c_socket.send(payload)
+        print("[i] Vote Cast!")
 
-def cast_vote(ballot):
-    """send ballot response"""
-    global sPUB
-    payload = encrypt_a(pickle.dumps(ballot), sPUB)
-    sendd(payload)
-    print(type(payload))
-    print(payload)
-    print("[i] Vote Casted!")
+def get_user_vote(ballot):
+    """Get Vote"""
+
+    choice = select_party(ballot)
+    ballot[choice] = 1
+    return ballot
+
 
 def main():
-    """Main function to manage voting clients"""
+    """Main function to run client functions"""
+    print("[i] Initializing Voter Client")
+    client = Client(UUID)
+    client.connect()
+    
+    if client.say_hello():
+        print("[i] Server verified!")
+    else:
+        eprint("[!] Invalid Server Signature")
+        sys.exit(-1)
 
-    init_keys()
-    connect_server()
-    read_server_key()
-    say_hello()
-    generate_tsession()
-    send_tsession()
-    ballot = get_ballot()
-    ballot['ballot']['PARTY A'] = 1;
-    cast_vote(ballot)
-    close_socket(Client)
+    # get VID input
+    ROOT = tk.Tk()
+    #ROOT.withdraw()
+
+    # the input dialog
+    vid = None
+    biometric = None
+    while True:
+        vid = simpledialog.askstring(title="Voter ID", prompt="Enter voter id:")
+        if vid:
+            break
+
+    while True:        
+        biometric = simpledialog.askstring(title="Biometric", prompt="Enter biometric signature:")
+        if biometric:
+            break
+
+    ballot_dict = client.get_ballot(vid, biometric)
+    ballot = ballot_dict['ballot']
+
+    # Get User Vote
+    ballot_dict['ballot'] = get_user_vote(ballot)
+
+    # Cast vote
+    client.cast_vote(ballot_dict)
+
+    client.c_socket.close()
 
 if __name__ == '__main__':
     main()
