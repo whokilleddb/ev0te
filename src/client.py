@@ -38,6 +38,7 @@ class PartySelector:
         
 def select_party(options):
     root = tk.Tk()
+    root.withdraw()
     selector = PartySelector(options)
     root.mainloop()
     # When the mainloop is finished, return the selected value
@@ -274,7 +275,7 @@ def main():
 
     # get VID input
     ROOT = tk.Tk()
-    #ROOT.withdraw()
+    ROOT.withdraw()
 
     # the input dialog
     vid = None
@@ -289,6 +290,7 @@ def main():
         if biometric:
             break
 
+    ROOT.deiconify()
     ballot_dict = client.get_ballot(vid, biometric)
     ballot = ballot_dict['ballot']
 
