@@ -38,6 +38,7 @@ class PartySelector:
         
 def select_party(options):
     root = tk.Tk()
+    root.withdraw()
     selector = PartySelector(options)
     root.mainloop()
     # When the mainloop is finished, return the selected value
@@ -262,44 +263,44 @@ def get_user_vote(ballot):
 
 def main():
     """Main function to run client functions"""
+    print("[i] Initializing Voter Client")
+    client = Client(UUID)
+    client.connect()
+    
+    if client.say_hello():
+        print("[i] Server verified!")
+    else:
+        eprint("[!] Invalid Server Signature")
+        sys.exit(-1)
+
+    # get VID input
+    ROOT = tk.Tk()
+    ROOT.withdraw()
+
+    # the input dialog
+    vid = None
+    biometric = None
     while True:
-        print("[i] Initializing Voter Client")
-        client = Client(UUID)
-        client.connect()
-        
-        if client.say_hello():
-            print("[i] Server verified!")
-        else:
-            eprint("[!] Invalid Server Signature")
-            sys.exit(-1)
+        vid = simpledialog.askstring(title="Voter ID", prompt="Enter voter id:")
+        if vid:
+            break
 
-        # get VID input
-        ROOT = tk.Tk()
-        #ROOT.withdraw()
+    while True:        
+        biometric = simpledialog.askstring(title="Biometric", prompt="Enter biometric signature:")
+        if biometric:
+            break
 
-        # the input dialog
-        vid = None
-        biometric = None
-        while True:
-            vid = simpledialog.askstring(title="Voter ID", prompt="Enter voter id:")
-            if vid:
-                break
+    ROOT.deiconify()
+    ballot_dict = client.get_ballot(vid, biometric)
+    ballot = ballot_dict['ballot']
 
-        while True:        
-            biometric = simpledialog.askstring(title="Biometric", prompt="Enter biometric signature:")
-            if biometric:
-                break
+    # Get User Vote
+    ballot_dict['ballot'] = get_user_vote(ballot)
 
-        ballot_dict = client.get_ballot(vid, biometric)
-        ballot = ballot_dict['ballot']
+    # Cast vote
+    client.cast_vote(ballot_dict)
 
-        # Get User Vote
-        ballot_dict['ballot'] = get_user_vote(ballot)
-
-        # Cast vote
-        client.cast_vote(ballot_dict)
-
-        client.c_socket.close()
+    client.c_socket.close()
 
 if __name__ == '__main__':
     main()
